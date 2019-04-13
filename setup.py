@@ -21,8 +21,8 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     packages=["bocadillo"],
     install_requires=[
-        "starlette>=0.12.0.b1, <0.13",
-        "uvicorn>=0.7.0.b1, <0.8",
+        "starlette>=0.12.0.b3, <0.13",
+        "uvicorn>=0.7.0.b2, <0.8",
         "typesystem>=0.2.2",
         "jinja2>=2.10.1",
         "whitenoise",
