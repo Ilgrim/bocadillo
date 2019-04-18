@@ -178,7 +178,7 @@ items = list(range(10))
 async def get_items(req, res, limit: int = None):
     if limit is not None:
         items = items[:limit]
-    res.media = items
+    res.json = items
 ```
 
 Here's what `limit` will be for various requested URL paths:
@@ -203,73 +203,6 @@ When Bocadillo cannot find a matching route for the requested URL, a `404 Not Fo
 If a route was found but it did not support the requested HTTP method (e.g. `POST` or `DELETE` when only `GET` is supported), a `405 Method Not Allowed` error response is returned.
 
 See [customizing error handling](views.md#customizing-error-handling) for how to customize this behavior.
-
-## Naming routes
-
-Working with absolute URLs can quickly become impractical, as changes to a route's URL pattern may require changes across the whole code base.
-
-To overcome this, all routes are given a name which can be referenced later.
-
-### Inferred route names
-
-Bocadillo will assign a name to routes based on the name of their view function or class.
-
-The inferred route name is always `snake_cased`, as shown in the table below.
-
-| View declaration                                               | Inferred route name |
-| -------------------------------------------------------------- | ------------------- |
-| `async def do_stuff(req, res):` (or `def do_stuff(req, res):`) | `"do_stuff"`        |
-| `class DoStuff:`                                               | `"do_stuff"`        |
-
-### Explicit route names
-
-If you wish to specify an explicit name, use the `name` parameter to `@app.route()`:
-
-```python
-@app.route('/about/{who}', name='about_page')
-async def about(req, res, who):
-    res.html = f'<h1>About {who}</h1>'
-```
-
-### Namespacing routes
-
-You can specify a namespace in order to group route names together:
-
-```python
-@app.route('/blog/', namespace='blog')
-async def home(req, res):
-    pass
-```
-
-The namespace will be prepended to the route's name (either inferred or explicit) and separated by a colon, e.g. resulting in `blog:home` for the above example.
-
-::: tip
-If you find yourself namespacing a lot of routes under a common path prefix (like above), you might benefit from writing a [recipe](../agnostic/recipes.md).
-:::
-
-## Reversing named routes
-
-To get back the full URL path to a named route (including its optional namespace), use `app.url_for()`, passing required route parameters as keyword arguments:
-
-```python
->>> app.url_for('about', who='them')
-'/about/them'
->>> app.url_for('blog:home')
-'/blog/'
-```
-
-In templates, you can use the `url_for()` template global:
-
-```html
-<h1>Hello, Bocadillo!</h1>
-<p>
-  <a href="{{ url_for('about', who='me') }}">About me</a>
-</p>
-```
-
-::: warning
-Referencing a non-existing named route with `url_for()` will trigger an `HTTPError(404)` exception — **even in templates**.
-:::
 
 ## Specifying HTTP methods
 

@@ -21,8 +21,8 @@ from bocadillo import Recipe
 tacos = Recipe('tacos')
 
 @tacos.route('/{ingredient}')
-def retrieve_taco(req, res, ingredient: str):
-    res.media = {'ingredient': ingredient}
+async def retrieve_taco(req, res, ingredient: str):
+    res.json = {'ingredient': ingredient}
 ```
 
 The recipe is given the name `'tacos'`. This name is used to infer the path prefix for the recipe, i.e. `/tacos`. You can also pass a path `prefix` explicitly (which must start with `/`):
@@ -51,9 +51,9 @@ This will add all the routes in the `tacos` recipe under the `/tacos` path, mean
 
 This includes, but is not limited to:
 
-- [Routing](../http/routing.md), e.g. `@recipe.route(...)`, `@recipe.websocket_route(...)`, `.url_for()`, etc.
+- [Routing](../http/routing.md), e.g. `@recipe.route(...)` and `@recipe.websocket_route(...)`.
 - [Error handling](../http/error-handling.md), e.g. `@recipe.error_handler()`.
-- [Redirecting](../http/redirecting.md), e.g. `recipe.redirect(...)`
+- [Redirecting](../http/redirecting.md), e.g. `raise Redirect("/some/page")`
 - [Middleware](../http/middleware.md), e.g. `recipe.add_middleware(...)`.
 
 Note, however, that:
@@ -121,7 +121,7 @@ employees = Recipe('employees')
 
 @employees.route('/{pk}')
 async def get_employee(req, res, pk: int):
-    res.media = {'id': pk, 'name': 'John Doe'}
+    res.json = {'id': pk, 'name': 'John Doe'}
 ```
 
 ```python
@@ -132,7 +132,7 @@ interns = Recipe('interns')
 
 @interns.route('/{pk}')
 async def get_intern(req, res, pk: int):
-    res.media = {'id': pk, 'name': 'Don Joe'}
+    res.json = {'id': pk, 'name': 'Don Joe'}
 ```
 
 ```python{7}
@@ -153,7 +153,7 @@ companies = Recipe('companies')
 
 @companies.route('/')
 async def list_companies(req, res):
-    res.media = ['Python Software Foundation']
+    res.json = ['Python Software Foundation']
 ```
 
 ```python{7}

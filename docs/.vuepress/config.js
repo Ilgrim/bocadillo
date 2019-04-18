@@ -67,15 +67,6 @@ module.exports = {
             ]
           },
           {
-            text: "Tooling",
-            items: [
-              {
-                text: "Queso (CLI)",
-                link: project.docsPage("queso")
-              }
-            ]
-          },
-          {
             text: "News",
             items: [
               {
@@ -130,11 +121,17 @@ module.exports = {
         }
       ],
       "/guides/": [
-        "/guides/app",
+        "/guides/async",
         {
-          title: "Tooling",
+          title: "Architecture",
           collapsable: false,
-          children: listDir("guides/tooling", ["cli", "testing"])
+          children: listDir("guides/architecture", [
+            "app",
+            "recipes",
+            "events",
+            "plugins",
+            "testing"
+          ])
         },
         {
           title: "HTTP",
@@ -146,11 +143,11 @@ module.exports = {
             "requests",
             "responses",
             "redirecting",
-            "media",
             "static-files",
             "hooks",
             "background-tasks",
             "middleware",
+            "sessions",
             "sse"
           ])
         },
@@ -169,13 +166,7 @@ module.exports = {
         {
           title: "Protocol-agnostic",
           collapsable: false,
-          children: listDir("guides/agnostic", [
-            "asgi-middleware",
-            "templates",
-            "recipes",
-            "events",
-            "sessions"
-          ])
+          children: listDir("guides/agnostic", ["asgi-middleware", "templates"])
         },
         {
           title: "Providers (Dependency injection)",
@@ -197,7 +188,7 @@ module.exports = {
         {
           title: "Building upon the framework",
           collapsable: false,
-          children: listDir("how-to", ["yaml-media", "middleware", "heroku"])
+          children: listDir("how-to", ["middleware", "heroku"])
         },
         {
           title: "Third-party solutions",
@@ -216,6 +207,7 @@ module.exports = {
           collapsable: false,
           children: listDir("discussions", [
             "databases",
+            "frontend",
             "deployment",
             "security"
           ])

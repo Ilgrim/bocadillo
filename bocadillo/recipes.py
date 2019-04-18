@@ -1,4 +1,4 @@
-from typing import Sequence
+import typing
 
 from .applications import App
 
@@ -42,9 +42,6 @@ class Recipe(App):
 
         self.prefix = prefix
 
-    def _get_own_url_for(self, name: str, **kwargs) -> str:
-        return self.prefix + super()._get_own_url_for(name, **kwargs)
-
     def apply(self, app: App, root: str = ""):
         """Apply the recipe to an application."""
         app.mount(prefix=root + self.prefix, app=self)
@@ -67,7 +64,7 @@ class RecipeBook(RecipeBase):
         A prefix that will be prepended to all of the recipes' prefixes.
     """
 
-    def __init__(self, recipes: Sequence[Recipe], prefix: str):
+    def __init__(self, recipes: typing.Sequence[Recipe], prefix: str):
         super().__init__(prefix)
         self.recipes = recipes
 

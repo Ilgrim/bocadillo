@@ -1,6 +1,9 @@
-from bocadillo import App, view, provider
+# app.py
+from bocadillo import App, view, provider, configure
+import settings
 
-app = App(enable_sessions=True)
+app = App()
+configure(app, settings)
 
 
 @provider(scope="app", name="todos")
@@ -20,7 +23,7 @@ async def get_unseen_todos(req, res, todos):
     if unseen_todos:
         req.session["last_id"] = unseen_todos[-1]["id"]
 
-    res.media = unseen_todos
+    res.json = unseen_todos
 
 
 @app.route("/todos")

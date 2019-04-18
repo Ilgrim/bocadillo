@@ -1,12 +1,6 @@
 import inspect
-import os
-import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
+import typing
 
-from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.wsgi import WSGIMiddleware
 from starlette.routing import Lifespan
 import typesystem
@@ -20,42 +14,27 @@ from .app_types import (
     Scope,
     Send,
 )
+from .config import settings
 from .compat import WSGIApp, nullcontext
-from .constants import CONTENT_TYPE, DEFAULT_CORS_CONFIG
 from .converters import on_validation_error
 from .error_handlers import error_to_text
 from .errors import HTTPError, HTTPErrorMiddleware, ServerErrorMiddleware
 from .injection import _STORE
-from .media import UnsupportedMediaType, get_default_handlers
 from .meta import DocsMeta
 from .middleware import ASGIMiddleware
 from .request import Request
 from .response import Response
 from .routing import RoutingMixin
-from .sessions import MissingSecretKey
-from .staticfiles import WhiteNoise, static
+from .staticfiles import WhiteNoise
 
-if TYPE_CHECKING:  # pragma: no cover
+if typing.TYPE_CHECKING:  # pragma: no cover
     from .recipes import Recipe
-
-
-_SCRIPT_REGEX = re.compile(r"(.*)\.py")
-
-
-def _get_module(script_path: str) -> Optional[str]:  # pragma: no cover
-    match = _SCRIPT_REGEX.match(script_path)
-    if match is None:
-        return None
-    return match.group(1).replace(os.path.sep, ".")
 
 
 class App(RoutingMixin, metaclass=DocsMeta):
     """The all-mighty application class.
 
     This class implements the [ASGI3](https://asgi.readthedocs.io) interface.
-
-    [CORSMiddleware]: https://www.starlette.io/middleware/#corsmiddleware
-    [SessionMiddleware]: https://www.starlette.io/middleware/#sessionmiddleware
 
     # Example
 
@@ -67,71 +46,13 @@ class App(RoutingMixin, metaclass=DocsMeta):
     # Parameters
     name (str):
         An optional name for the app.
-    static_dir (str):
-        The name of the directory containing static files, relative to
-        the application entry point. Set to `None` to not serve any static
-        files.
-        Defaults to `"static"`.
-    static_root (str):
-        The path prefix for static assets.
-        Defaults to `"static"`.
-    static_config (dict):
-        Extra static files configuration attributes.
-        See also #::bocadillo.staticfiles#static.
-    allowed_hosts (list of str, optional):
-        A list of hosts which the server is allowed to run at.
-        If the list contains `"*"`, any host is allowed.
-        Defaults to `["*"]`.
-    enable_sessions (bool):
-        If `True`, cookie-based signed sessions are enabled according to the
-        `sessions_config`. The secret key must be non-empty and can also be
-        set via the `SECRET_KEY` environment variable.
-        Defaults to `False`.
-    sessions_config (dict):
-        A dictionary of sessions configuration parameters.
-        See [SessionMiddleware].
-    enable_cors (bool):
-        If `True`, Cross Origin Resource Sharing are configured according
-        to `cors_config`. Defaults to `False`.
-        See also [CORS](../guides/http/middleware.md#cors).
-    cors_config (dict):
-        A dictionary of CORS configuration parameters.
-        Defaults to `dict(allow_origins=[], allow_methods=["GET"])`.
-        See [CORSMiddleware].
-    enable_hsts (bool):
-        If `True`, enable HSTS (HTTP Strict Transport Security) and automatically
-        redirect HTTP traffic to HTTPS.
-        Defaults to `False`.
-        See also [HSTS](../guides/http/middleware.md#hsts).
-    enable_gzip (bool):
-        If `True`, enable GZip compression and automatically
-        compress responses for clients that support it.
-        Defaults to `False`.
-        See also [GZip](../guides/http/middleware.md#gzip).
-    gzip_min_size (int):
-        If specified, compress only responses that
-        have more bytes than the specified value.
-        Defaults to `1024`.
-    media_type (str):
-        Determines how values given to `res.media` are serialized.
-        Can be one of the supported media types.
-        Defaults to `"application/json"`.
-        See also [Media](../guides/http/media.md).
-
-    # Attributes
-    media_handlers (dict):
-        The dictionary of media handlers.
-        You can access, edit or replace this at will.
     """
 
     __slots__ = (
         "name",
         "asgi",
-        "_prefix_to_app",
-        "_name_to_prefix_and_app",
+        "_children",
         "_static_apps",
-        "media_handlers",
-        "_media_type",
         "exception_middleware",
         "server_error_middleware",
         "_lifespan",
@@ -139,46 +60,17 @@ class App(RoutingMixin, metaclass=DocsMeta):
         "_frozen",
     )
 
-    def __init__(
-        self,
-        name: str = None,
-        *,
-        static_dir: Optional[str] = "static",
-        static_root: Optional[str] = "static",
-        static_config: dict = None,
-        allowed_hosts: List[str] = None,
-        enable_sessions: bool = False,
-        sessions_config: dict = None,
-        enable_cors: bool = False,
-        cors_config: dict = None,
-        enable_hsts: bool = False,
-        enable_gzip: bool = False,
-        gzip_min_size: int = 1024,
-        media_type: str = CONTENT_TYPE.JSON,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
+    def __init__(self, name: str = None):
+        super().__init__()
 
         self.name = name
 
         # Base ASGI app
         self.asgi = self.dispatch
 
-        # Mounted (children) apps
-        self._prefix_to_app: Dict[str, Any] = {}
-        self._name_to_prefix_and_app: Dict[str, Tuple[str, App]] = {}
-        self._static_apps: Dict[str, WhiteNoise] = {}
-
-        # Static files
-        if static_dir is not None:
-            if static_root is None:
-                static_root = static_dir
-            self.mount(static_root, static(static_dir, **(static_config or {})))
-
-        # Media
-        self.media_handlers = get_default_handlers()
-        self._media_type = ""
-        self.media_type = media_type
+        # Mounted (children) apps.
+        self._children: typing.Dict[str, typing.Any] = {}
+        self._static_apps: typing.Dict[str, WhiteNoise] = {}
 
         # HTTP middleware
         self.exception_middleware = HTTPErrorMiddleware(self.http_router)
@@ -191,55 +83,18 @@ class App(RoutingMixin, metaclass=DocsMeta):
         # Lifespan middleware
         self._lifespan = Lifespan()
 
-        # ASGI middleware
-
-        if allowed_hosts is None:
-            allowed_hosts = ["*"]
-        self.add_asgi_middleware(
-            TrustedHostMiddleware, allowed_hosts=allowed_hosts
-        )
-
-        if enable_sessions:
-            sessions_config = sessions_config or {}
-
-            try:
-                from starlette.middleware.sessions import SessionMiddleware
-            except ImportError as exc:  # pragma: no cover
-                if "itsdangerous" in str(exc):
-                    raise ImportError(
-                        "Please install the [sessions] extra to use sessions: "
-                        "`pip install bocadillo[sessions]`."
-                    ) from exc
-                raise exc from None
-
-            secret_key = sessions_config.pop("secret_key", None)
-            if secret_key is None:
-                secret_key = os.environ.get("SECRET_KEY", "")
-
-            if not secret_key:
-                raise MissingSecretKey(
-                    "A non-empty secret key must be set to use sessions. "
-                    "Pass a 'secret_key' to 'session_config', or set the "
-                    "SECRET_KEY environment variable."
+        # Startup checks.
+        @self.on("startup")
+        async def check_app():
+            if not settings.configured:
+                raise RuntimeError(
+                    "You must call `configure(app)` before serving `app`. "
                 )
-
-            sessions_config["secret_key"] = secret_key
-
-            self.add_asgi_middleware(SessionMiddleware, **sessions_config)
-
-        if enable_cors:
-            cors_config = {**DEFAULT_CORS_CONFIG, **(cors_config or {})}
-            self.add_asgi_middleware(CORSMiddleware, **cors_config)
-
-        if enable_hsts:
-            self.add_asgi_middleware(HTTPSRedirectMiddleware)
-
-        if enable_gzip:
-            self.add_asgi_middleware(GZipMiddleware, minimum_size=gzip_min_size)
 
         # Providers.
 
         self._store = _STORE
+        self._frozen = False
 
         # NOTE: discover providers from `providerconf` at instanciation time,
         # so that further declared views correctly resolve providers.
@@ -248,57 +103,13 @@ class App(RoutingMixin, metaclass=DocsMeta):
         self.on("startup", self._store.enter_session)
         self.on("shutdown", self._store.exit_session)
 
-        self._frozen = False
-
-    def _app_providers(self):  # pylint: disable=method-hidden
+    def _app_providers(self):
         if not self._frozen:
             self._store.freeze()
             self._frozen = True
         return nullcontext()
 
-    @property
-    def media_type(self) -> str:
-        """The media type configured when instanciating the application."""
-        return self._media_type
-
-    @media_type.setter
-    def media_type(self, media_type: str):
-        if media_type not in self.media_handlers:
-            raise UnsupportedMediaType(media_type, handlers=self.media_handlers)
-        self._media_type = media_type
-
-    def url_for(self, name: str, **kwargs) -> str:
-        # Implement route name lookup accross sub-apps.
-        try:
-            return super().url_for(name, **kwargs)
-        except HTTPError as exc:
-            app_name, _, name = name.partition(":")
-
-            if not name:
-                # No app name given.
-                raise exc from None
-
-            return self._url_for_app(app_name, name, **kwargs)
-
-    def _url_for_app(self, app_name: str, name: str, **kwargs) -> str:
-        if app_name == self.name:
-            # NOTE: this allows to reference this app's routes in
-            # both with or without the namespace.
-            return self._get_own_url_for(name, **kwargs)
-
-        try:
-            prefix, app = self._name_to_prefix_and_app[app_name]
-        except KeyError as key_exc:
-            raise HTTPError(404) from key_exc
-        else:
-            return prefix + app.url_for(name, **kwargs)
-
-    def _get_own_url_for(self, name: str, **kwargs) -> str:
-        # NOTE: recipes hook into this method to prepend their
-        # prefix to the URL.
-        return super().url_for(name, **kwargs)
-
-    def mount(self, prefix: str, app: Union["App", ASGIApp, WSGIApp]):
+    def mount(self, prefix: str, app: typing.Union["App", ASGIApp, WSGIApp]):
         """Mount another WSGI or ASGI app at the given prefix.
 
         [WSGI]: https://wsgi.readthedocs.io
@@ -313,10 +124,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
         if not prefix.startswith("/"):
             prefix = "/" + prefix
 
-        self._prefix_to_app[prefix] = app
-
-        if isinstance(app, App) and app.name is not None:
-            self._name_to_prefix_and_app[app.name] = (prefix, app)
+        self._children[prefix] = app
 
         if isinstance(app, WhiteNoise):
             self._static_apps[prefix] = app
@@ -330,11 +138,13 @@ class App(RoutingMixin, metaclass=DocsMeta):
             to be applied to the application.
 
         # See Also
-        - [Recipes](../guides/agnostic/recipes.md)
+        - [Recipes](../guides/architecture/recipes.md)
         """
         recipe.apply(self)
 
-    def add_error_handler(self, exception_cls: Type[_E], handler: ErrorHandler):
+    def add_error_handler(
+        self, exception_cls: typing.Type[_E], handler: ErrorHandler
+    ):
         """Register a new error handler.
 
         # Parameters
@@ -347,7 +157,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
         """
         self.exception_middleware.add_exception_handler(exception_cls, handler)
 
-    def error_handler(self, exception_cls: Type[Exception]):
+    def error_handler(self, exception_cls: typing.Type[Exception]):
         """Register a new error handler (decorator syntax).
 
         # See Also
@@ -397,7 +207,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
 
         self.asgi = middleware_cls(self.asgi, *args, **kwargs)
 
-    def on(self, event: str, handler: Optional[EventHandler] = None):
+    def on(self, event: str, handler: typing.Optional[EventHandler] = None):
         """Register an event handler.
 
         # Parameters
@@ -434,11 +244,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
 
     async def dispatch_http(self, scope: Scope, receive: Receive, send: Send):
         req = Request(scope, receive)
-        res = Response(
-            req,
-            media_type=self.media_type,
-            media_handler=self.media_handlers[self.media_type],
-        )
+        res = Response(req)
 
         res: Response = await self.server_error_middleware(req, res)
         await res(scope, receive, send)
@@ -456,7 +262,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
             path: str = scope["path"]
 
             # Return a sub-mounted extra app, if found
-            for prefix, app in self._prefix_to_app.items():
+            for prefix, app in self._children.items():
                 if not path.startswith(prefix):
                     continue
                 # Remove prefix from path so that the request is made according

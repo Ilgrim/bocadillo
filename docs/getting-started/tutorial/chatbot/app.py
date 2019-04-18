@@ -1,7 +1,8 @@
-from bocadillo import App
-
+"""Application definition."""
+from bocadillo import App, discover_providers
 
 app = App()
+discover_providers("chatbot.providerconf")
 
 
 @app.websocket_route("/conversation")
@@ -14,4 +15,4 @@ async def converse(ws, diego, save_client):
 
 @app.route("/client-count")
 async def client_count(req, res, clients):
-    res.media = {"count": len(clients)}
+    res.json = {"count": len(clients)}

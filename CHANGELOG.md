@@ -16,12 +16,33 @@ As a result, we strongly recommend you read this document carefully before upgra
 
 ### Added
 
+Routing:
+
 - Route parameters are now validated based on type annotations defined on the HTTP or WebSocket view. Annotations can be `int`, `float`, `bool`, `date`, `datetime`, `time`, `decimal.Decimal` or any [TypeSystem] field.
 - Query parameters can be injected into a view by declaring them as parameters with defaults, e.g. `limit: int = None`. Type annotation-based validation is also available.
+
+New settings infrastructure:
+
+- Django-style `bocadillo.settings` lazy object.
+- Configure an app before serving using `bocadillo.configure(app)`.
+
+New plugin mechanism:
+
+- Signature: `(app: App) -> None`.
+- Use the new lazy `settings` object to perform conditional logic.
+- Register a new plugin using `@bocadillo.plugin`.
+- Inspect registered plugins using the `get_plugins()` helper.
+
+Other:
+
 - Error handlers can now re-raise exceptions for further processing, e.g. re-raise an `HTTPError` which will be processed by the registered `HTTPError` handler.
 - Build a full URL for a `LiveServer` using `server.url("/path")`. Note: `server.url` still gives access to the root live server URL.
+  [typesystem]: https://www.encode.io/typesystem
 
-[typesystem]: https://www.encode.io/typesystem
+### Changed
+
+- Features such as CORS, HSTS or allowed hosts are now implemented via plugins. See the "Removed" section for the impact on the application API.
+- **BREAKING**: redirects now use an exception syntax: `raise Redirect("/foo")` (`from bocadillo import Redirect`) instead of `app.redirect("/foo)`. `app.redirect()` has been removed consequently.
 
 ### Fixed
 
@@ -29,15 +50,38 @@ As a result, we strongly recommend you read this document carefully before upgra
 
 ### Removed
 
+`App` parameters:
+
+- **BREAKING** Removed `static_dir`, `static_root` and `static_config`. Use the `STATIC_DIR`, `STATIC_ROOT` and `STATIC_CONFIG` settings instead.
+- **BREAKING** Removed `allowed_hosts`. Use the `ALLOWED_HOSTS` setting instead.
+- **BREAKING** Removed `enable_sessions` and `sessions_config`. Use the `SESSIONS` setting instead.
+- **BREAKING** Removed `enable_cors` and `cors_config`. Use the `CORS` setting instead.
+- **BREAKING** Removed `enable_hsts`. Use the `HSTS` setting instead.
+- **BREAKING** Removed `enable_gzip` and `gzip_min_size`. Use the `GZIP` and `GZIP_MIN_SIZE` settings instead.
+
+Named routes:
+
+- **BREAKING** Removed route names and namespaces, i.e. `app.route(name="foo")` and `app.route(namespace="bar")` are not supported anymore.
+- **BREAKING** Removed `app.url_for()`. Please use relative URLs if you need to refer to another route by URL.
+
+Other:
+
 - **BREAKING**: the `.run()` method on `App` has been removed in favor of the `uvicorn` command shipped with the [uvicorn] ASGI server (which comes installed with Bocadillo). In particular, the `if __name__ == "__main__": app.run()` invokation is now obsolete. Just use `uvicorn app:app` instead of `python app.py` (and `uvicorn.run(app)` for programmatic usage).
+- **BREAKING**: synchronous views, HTTP middleware callbacks, hooks and error handlers are not supported anymore. Appropriate error messages will help you migrate to an all-async application.
 - **BREAKING**: route parameter validation via specifiers (e.g. `{id:d}`) is not supported anymore. Please use type annotation-based validation instead (e.g. `pk: int`).
-- **BREAKING**: debug mode has been removed., which means `App` does not accept a `debug` parameter anymore. To enable hot reload, please use `uvicorn --reload` instead.
+- **BREAKING**: debug mode has been removed, which means `App` does not accept a `debug` parameter anymore. To enable hot reload, please use `uvicorn --reload` instead.
 
 [uvicorn]: https://www.uvicorn.org/
 
 Deprecated items from 0.13:
 
 - **BREAKING**: `.client` attribute on `App` and `Recipe` was removed. Please use `bocadillo.testing.create_client` instead.
+
+## [v0.13.3] - 2019-04-17
+
+### Added
+
+- Install all extra features (`sessions` and `files`) using `pip install bocadillo[full]`.
 
 ## [v0.13.2] - 2019-04-13
 
@@ -584,7 +628,8 @@ async def foo(req, res):
 - `README.md`.
 - `CONTRIBUTING.md`.
 
-[unreleased]: https://github.com/bocadilloproject/bocadillo/compare/v0.13.2...HEAD
+[unreleased]: https://github.com/bocadilloproject/bocadillo/compare/v0.13.3...HEAD
+[v0.13.3]: https://github.com/bocadilloproject/bocadillo/compare/v0.13.2...v0.13.3
 [v0.13.2]: https://github.com/bocadilloproject/bocadillo/compare/v0.13.1...v0.13.2
 [v0.13.1]: https://github.com/bocadilloproject/bocadillo/compare/v0.13.0...v0.13.1
 [v0.13.0]: https://github.com/bocadilloproject/bocadillo/compare/v0.12.6...v0.13.0

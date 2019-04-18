@@ -6,7 +6,7 @@ Bocadillo makes it easy to catch specific exceptions to return appropriate HTTP 
 
 ## What is an error handler?
 
-An **error handler** is a function (asynchronous or synchronous) that is called when an exception occurs.
+An **error handler** is an asynchronous function that is called when an exception occurs.
 
 Error handlers are given the `Request` and `Response` objects in the state they were just when the exception was raised, and the exception object itself. They can mutate the response (e.g. set the status code) in order to achieve their desired behavior.
 
@@ -27,17 +27,17 @@ To register an error handler, use the `@app.error_handler()` decorator:
 
 ```python
 @app.error_handler(AttributeError)
-def on_attribute_error(req, res, exc: AttributeError):
+async def on_attribute_error(req, res, exc: AttributeError):
     res.status = 500
-    res.media = {'error': {'attribute_not_found': exc.args[0]}}
+    res.json = {'error': {'attribute_not_found': exc.args[0]}}
 ```
 
 For convenience, a non-decorator syntax is also available:
 
 ```python
-def on_attribute_error(req, res, exc: AttributeError):
+async def on_attribute_error(req, res, exc: AttributeError):
     res.status = 500
-    res.media = {'error': {'attribute_not_found': exc.args[0]}}
+    res.json = {'error': {'attribute_not_found': exc.args[0]}}
 
 app.add_error_handler(AttributeError, on_attribute_error)
 ```
@@ -62,7 +62,7 @@ Of course, you can register your own error handler for `HTTPError`. Common `HTTP
 
 - `error_to_text()`: converts an exception to plain text (this is the default).
 - `error_to_html()`: converts an exception to an HTML response.
-- `error_to_media()`: converts an exception to a media response.
+- `error_to_json()`: converts an exception to a JSON response.
 
 ## Example
 
@@ -85,12 +85,12 @@ class Win(GameException):
 app = App()
 
 @app.error_handler(GameException)
-def on_game_exception(req, res, exc):
+async def on_game_exception(req, res, exc):
     res.text = "Something went wrong…"
     res.status_code = 500
 
 @app.error_handler(Win)
-def on_success(req, res, exc):
+async def on_success(req, res, exc):
     res.text = "You win!"
     res.status_code = 200
 
