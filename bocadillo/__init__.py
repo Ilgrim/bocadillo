@@ -1,4 +1,5 @@
 from .applications import App
+from .auth import authenticate
 from .config import settings, SettingsError, configure
 from .compat import ExpectedAsync
 from .errors import HTTPError
