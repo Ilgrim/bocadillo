@@ -5,7 +5,7 @@ from bocadillo import App
 
 @pytest.mark.parametrize("path", ["/other", "/other/", "/other/foo"])
 def test_mount(app: App, client, path):
-    other = App("other")
+    other = App()
 
     @other.route("/")
     async def index(req, res):

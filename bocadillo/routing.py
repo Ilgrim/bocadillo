@@ -93,8 +93,8 @@ class Mount(BaseRoute):
             app = WSGIMiddleware(self.app)
             await app(scope, receive, send)
         finally:
-            # Used by RequestResponseMiddleware.
-            scope["response_sent"] = True
+            if not isinstance(self.app, (BaseRoute, Router)):
+                scope["response_sent"] = True
 
 
 class Router:
