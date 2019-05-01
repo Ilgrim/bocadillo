@@ -1,33 +1,27 @@
 import inspect
 import typing
 
-from starlette.middleware.wsgi import WSGIMiddleware
 from starlette.routing import Lifespan
 
-from .app_types import (
-    _E,
-    ASGIApp,
-    ErrorHandler,
-    EventHandler,
-    Receive,
-    Scope,
-    Send,
-)
-from .config import settings
+from .app_types import ASGIApp, ErrorHandler, EventHandler, Receive, Scope, Send
 from .compat import WSGIApp
-from .error_handlers import error_to_text, error_to_json
-from .errors import HTTPError, HTTPErrorMiddleware, ServerErrorMiddleware
+from .config import settings
+from .error_handlers import error_to_json, error_to_text
+from .errors import HTTPError
 from .injection import STORE
 from .meta import DocsMeta
-from .request import Request
-from .response import Response
-from .routing import RoutingMixin
+from .middleware import (
+    ExceptionMiddleware,
+    RequestResponseMiddleware,
+    ServerErrorMiddleware,
+)
+from .routing import Router
 
 if typing.TYPE_CHECKING:  # pragma: no cover
     from .recipes import Recipe
 
 
-class App(RoutingMixin, metaclass=DocsMeta):
+class App(metaclass=DocsMeta):
     """The all-mighty application class.
 
     This class implements the [ASGI](https://asgi.readthedocs.io) protocol.
@@ -46,32 +40,26 @@ class App(RoutingMixin, metaclass=DocsMeta):
 
     __slots__ = (
         "name",
-        "asgi",
-        "exception_middleware",
-        "server_error_middleware",
-        "_children",
+        "router",
+        "_exception_middleware",
+        "_asgi",
         "_lifespan",
     )
 
     def __init__(self, name: str = None):
-        super().__init__()
-
         self.name = name
 
-        # Base ASGI app
-        self.asgi = self.dispatch
+        self.router = Router()
 
-        # Mounted (children) apps.
-        self._children: typing.Dict[str, typing.Any] = {}
-
-        # HTTP middleware
-        self.exception_middleware = HTTPErrorMiddleware(self.http_router)
-        self.server_error_middleware = ServerErrorMiddleware(
-            self.exception_middleware, handler=error_to_text
+        self._exception_middleware = ExceptionMiddleware(
+            self.router, handlers={HTTPError: error_to_json}
         )
-        self.add_error_handler(HTTPError, error_to_json)
+        self._asgi = RequestResponseMiddleware(
+            ServerErrorMiddleware(
+                self._exception_middleware, handler=error_to_text
+            )
+        )
 
-        # Lifespan middleware
         self._lifespan = Lifespan()
 
         # Startup checks.
@@ -98,10 +86,43 @@ class App(RoutingMixin, metaclass=DocsMeta):
         app:
             an object implementing the [WSGI] or [ASGI] protocol.
         """
-        if not prefix.startswith("/"):
-            prefix = "/" + prefix
+        return self.router.mount(prefix, app)
 
-        self._children[prefix] = app
+    def route(self, pattern: str):
+        """Register an HTTP route by decorating a view.
+
+        # Parameters
+        pattern (str): an URL pattern.
+        """
+        return self.router.route(pattern)
+
+    def websocket_route(
+        self,
+        pattern: str,
+        *,
+        auto_accept: bool = True,
+        value_type: str = None,
+        receive_type: str = None,
+        send_type: str = None,
+        caught_close_codes: typing.Tuple[int] = None,
+    ):
+        """Register a WebSocket route by decorating a view.
+
+        See #::bocadillo.websockets#WebSocket for a description of keyword
+        parameters.
+
+        # Parameters
+        pattern (str): an URL pattern.
+        """
+
+        return self.router.websocket_route(
+            pattern,
+            auto_accept=auto_accept,
+            value_type=value_type,
+            receive_type=receive_type,
+            send_type=send_type,
+            caught_close_codes=caught_close_codes,
+        )
 
     def recipe(self, recipe: "Recipe"):
         """Apply a recipe.
@@ -117,7 +138,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
         recipe.apply(self)
 
     def add_error_handler(
-        self, exception_cls: typing.Type[_E], handler: ErrorHandler
+        self, exception_cls: typing.Type[BaseException], handler: ErrorHandler
     ):
         """Register a new error handler.
 
@@ -129,7 +150,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
             `exception_cls` is caught.
             Should accept a request, response and exception parameters.
         """
-        self.exception_middleware.add_exception_handler(exception_cls, handler)
+        self._exception_middleware.add_exception_handler(exception_cls, handler)
 
     def error_handler(self, exception_cls: typing.Type[Exception]):
         """Register a new error handler (decorator syntax).
@@ -153,8 +174,8 @@ class App(RoutingMixin, metaclass=DocsMeta):
         # See Also
         - [Middleware](../guides/http/middleware.md)
         """
-        self.exception_middleware.app = middleware_cls(
-            self.exception_middleware.app, **kwargs
+        self._exception_middleware.app = middleware_cls(
+            self._exception_middleware.app, **kwargs
         )
 
     def add_asgi_middleware(self, middleware_cls, **kwargs):
@@ -176,7 +197,7 @@ class App(RoutingMixin, metaclass=DocsMeta):
                     "Please upgrade to ASGI3: (scope, receive, send) -> None"
                 )
 
-        self.asgi = middleware_cls(self.asgi, **kwargs)
+        self._asgi = middleware_cls(self._asgi, **kwargs)
 
     def on(self, event: str, handler: typing.Optional[EventHandler] = None):
         """Register an event handler.
@@ -213,45 +234,8 @@ class App(RoutingMixin, metaclass=DocsMeta):
         self._lifespan.add_event_handler(event, handler)
         return handler
 
-    async def dispatch_http(self, scope: Scope, receive: Receive, send: Send):
-        req = Request(scope, receive)
-        res = Response(req)
-
-        res: Response = await self.server_error_middleware(req, res)
-        await res(scope, receive, send)
-        # Re-raise the exception to allow the server to log the error
-        # and for the test client to optionally re-raise it too.
-        self.server_error_middleware.raise_if_exception()
-
-    async def dispatch_websocket(
-        self, scope: Scope, receive: Receive, send: Send
-    ):
-        await self.websocket_router(scope, receive, send)
-
-    async def dispatch(self, scope: Scope, receive: Receive, send: Send):
-        path: str = scope["path"]
-
-        # Return a sub-mounted extra app, if found
-        for prefix, app in self._children.items():
-            if not path.startswith(prefix):
-                continue
-            # Remove prefix from path so that the request is made according
-            # to the mounted app's point of view.
-            scope["path"] = path[len(prefix) :]
-            try:
-                return await app(scope, receive, send)
-            except TypeError:
-                app = WSGIMiddleware(app)
-                return await app(scope, receive, send)
-
-        if scope["type"] == "websocket":
-            await self.dispatch_websocket(scope, receive, send)
-        else:
-            assert scope["type"] == "http"
-            await self.dispatch_http(scope, receive, send)
-
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
             await self._lifespan(scope, receive, send)
         else:
-            await self.asgi(scope, receive, send)
+            await self._asgi(scope, receive, send)
