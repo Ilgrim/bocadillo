@@ -49,11 +49,12 @@ def test_trailing_slash_not_redirected(app, client):
         ("/", 404),
         ("/1", 404),
         ("/tacos", 200),
-        ("/tacos/", 200),
+        ("/tacos/", 404),
         ("/tacos/1", 200),
+        ("/tacos/gluten-free", 200),
     ],
 )
-def test_mount_router(app, client, path, status):
+def test_include_router(app, client, path, status):
     router = Router()
 
     @router.route("/")
@@ -64,5 +65,10 @@ def test_mount_router(app, client, path, status):
     async def get_taco(req, res, pk):
         pass
 
-    app.mount("/tacos", router)
+    # Starts with same prefix than router, but should not be shadowed by it.
+    @app.route("/tacos/gluten-free")
+    async def gluten_free_tacos(req, res):
+        pass
+
+    app.include_router(router, prefix="/tacos")
     assert client.get(path).status_code == status

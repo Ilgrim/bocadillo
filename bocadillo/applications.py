@@ -74,6 +74,15 @@ class App(metaclass=DocsMeta):
         # so that further declared views correctly resolve providers.
         STORE.discover_default()
 
+    def include_router(self, router: Router, prefix: str = ""):
+        """Include routes from another router.
+
+        # Parameters
+        router (Router): a router object.
+        prefix (str): a string prefixed to the URL pattern of each route.
+        """
+        return self.router.include(router, prefix=prefix)
+
     def mount(self, prefix: str, app: typing.Union["App", ASGIApp, WSGIApp]):
         """Mount another WSGI or ASGI app at the given prefix.
 
@@ -82,7 +91,7 @@ class App(metaclass=DocsMeta):
 
         # Parameters
         prefix (str):
-            A path prefix where the app should be mounted, e.g. `"/myapp"`.
+            a path prefix where the app should be mounted, e.g. `"/myapp"`.
         app:
             an object implementing the [WSGI] or [ASGI] protocol.
         """

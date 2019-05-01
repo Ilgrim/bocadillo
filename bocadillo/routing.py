@@ -10,8 +10,13 @@ from .urlparse import Parser
 from .views import View
 from .websockets import WebSocket, WebSocketView
 
-# Route generic types.
-_V = typing.TypeVar("_V")  # view
+_V = typing.TypeVar("_V")
+
+
+def _join(prefix: str, path: str) -> str:
+    if path == "/":
+        return prefix
+    return prefix + path
 
 
 class BaseRoute(typing.Generic[_V]):
@@ -49,11 +54,11 @@ class HTTPRoute(BaseRoute, Patterned[View]):
 
 
 class WebSocketRoute(BaseRoute, Patterned[WebSocketView]):
-    __slots__ = ("_ws_kwargs",)
+    __slots__ = ("ws_kwargs",)
 
     def __init__(self, pattern: str, view: WebSocketView, **kwargs):
         super().__init__(pattern, view)
-        self._ws_kwargs = kwargs
+        self.ws_kwargs = kwargs
 
     def matches(self, scope: Scope) -> typing.Tuple[bool, Scope]:
         if scope["type"] != "websocket":
@@ -64,7 +69,7 @@ class WebSocketRoute(BaseRoute, Patterned[WebSocketView]):
         return True, {"path_params": params}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        ws = WebSocket(scope, receive, send, **self._ws_kwargs)
+        ws = WebSocket(scope, receive, send, **self.ws_kwargs)
         await self.view(ws, **scope["path_params"])
 
 
@@ -106,7 +111,27 @@ class Router:
     def add_route(self, route: BaseRoute) -> None:
         self.routes.append(route)
 
+    def include(self, other: "Router", prefix: str = ""):
+        """Include the routes of another router."""
+        for route in other.routes:
+            assert isinstance(route, (HTTPRoute, WebSocketRoute, Mount))
+            if prefix:
+                if isinstance(route, HTTPRoute):
+                    route = HTTPRoute(
+                        pattern=_join(prefix, route.pattern), view=route.view
+                    )
+                elif isinstance(route, WebSocketRoute):
+                    route = WebSocketRoute(
+                        pattern=_join(prefix, route.pattern),
+                        view=route.view,
+                        **route.ws_kwargs,
+                    )
+                elif isinstance(route, Mount):
+                    route = Mount(path=_join(prefix, route.path), app=route.app)
+            self.add_route(route)
+
     def mount(self, path: str, app: ASGIApp):
+        """Mount an ASGI or WSGI app at the given path."""
         return self.add_route(Mount(path, app))
 
     def route(self, pattern: str):
